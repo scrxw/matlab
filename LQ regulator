@@ -1,0 +1,30 @@
+clc
+clear
+format longg; %zastosowane w celu zapisu wyników w przystępnej formie (bez tego duże liczby wyświetlają się jako 1.0e+03 *(wynik)
+Pn=22000;   %moc znamionowa
+Un=440;     %napiecie zasilania
+in = 56.2;  %prąd znamionowy
+J=2.7;      %moment bezwładności
+Rt=0.465;   %rezystancja obwodu twornika
+Tt=0.033;    %stała czasowa obwodu twornika
+omega=1500*2*pi()/60;  %prędkosć kątowa - przeliczenie na rad/s
+Tm=0.2;     %stała elektromechaniczna, obliczona jako J*Rt/cmfi^2
+Cmfi=2.49;  %obliczone jako Un-R*In/omega
+A=[-1/Tt (-J/(Tm*Tt*Cmfi)); (Rt/(Tm*Cmfi)) 0];
+b= [1/(Tt*Rt);0];
+c=[0 1];
+d=[0];
+e=[0; -1/J];    %macierz w celu wyznaczenia silnika jako modelu drugiego rzędu
+silnik=ss(A,b,c,d);
+amp=tf(5.5, [1/1000 1]);
+model_wypadkowy=silnik*amp;
+Q= [0.1 0 0;       %kara na szybkość zmniejszania uchybu kątowego
+    0 30 0;
+    0 0 1]      
+R=10;       %kara jaką obciążany jest sygnał sterowania
+K=lqr(model_wypadkowy.a,model_wypadkowy.b,Q,R); %rozwiązanie równania Riccatiego
+model_wypadkowy.a=model_wypadkowy.a-model_wypadkowy.b*K    %modyfikacja macierzy A modelu wypadkowego
+Kff=1/dcgain(model_wypadkowy(1));
+model_wypadkowy=model_wypadkowy*Kff;
+step(model_wypadkowy)
+hold on
