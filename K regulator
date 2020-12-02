@@ -1,0 +1,62 @@
+clc
+clear
+format longg; %zastosowane w celu zapisu wyników w przystępnej formie (bez tego duże liczby wyświetlają się jako 1.0e+03 *(wynik)
+Pn=22000;   %moc znamionowa
+Un=440;     %napiecie zasilania
+in = 56.2;  %prąd znamionowy
+J=2.7;      %moment bezwładności
+Rt=0.465;   %rezystancja obwodu twornika
+Tt=0.033;    %stała czasowa obwodu twornika
+omega=1500*2*pi()/60;  %prędkosć kątowa - przeliczenie na rad/s
+Tm=0.2;     %stała elektromechaniczna, obliczona jako J*Rt/cmfi^2
+Cmfi=2.49;  %obliczone jako Un-R*In/omega
+A=[-1/Tt (-J/(Tm*Tt*Cmfi)); (Rt/(Tm*Cmfi)) 0];
+b= [1/(Tt*Rt);0];
+c=[0 1];
+d=[0];
+e=[0; -1/J];    %macierz w celu wyznaczenia silnika jako modelu drugiego rzędu
+
+silnik=ss(A,b,c,d) %funkcja ss, czyli state-space, model stanowy
+transmitancja=tf(silnik)         %funkcja tf, transfer function, czyli transmitancja, wyznaczenie modelu transmitacyjnego silnika
+%do funkcji np 'tf' można podać wynik poprzedniej funkcji, co ułatwia pracę i
+%pozwala przechowywać wynik całej funkcji w jednej zmiennej
+model_stanowyv2=ss(transmitancja) 
+%różnice w wartościach wynikają z tego, że funkcja tf zwraca macierze o
+%innym wymiarze niż funkcja ss
+ksz=1;
+zamkniety=feedback(silnik,ksz)
+dyskretna = tf((1/Cmfi), [Tt*Tm Tm 1], (Tm*0.01))
+
+
+
+wartosci_wlasne_A=eig(A) %wyznaczenie wartości własnych macierzy A
+miejsca_zerowe_silnik=pole(silnik)    %wyznaczenie miejsc zerowych równania charakterystycznego
+
+
+amp=tf(5.5, [1/1000 1]) %model transmitancyjny wzmacniacza
+%wyznaczenie modelu zastępczego (silnika z wzmacniaczem)
+model_wypadkowy=silnik*amp; %model trzeciego rzędu, (silnik 2 rząd, wzmacniacz 1 rząd, więc 3 rząd) 
+miejsca_zerowe_ukl_wyj=pole(model_wypadkowy)
+isstable(model_wypadkowy)   %łatwiejszy sposób odczytywania stabilności, w postaci wartości logicznej 1 lub 0
+%step(model_wypadkowy)   %narastanie aperiodyczne, asymptotyczne do wartości ustalonej
+%czas regulacji 0,58sekund, ale amplituda aż 2
+%cel regulacji: tr=0.5tr, kompensacja wzmocnienia k=100%
+%stosujemy regulator od wektora stanu, sygnał sterowania U(t)=Kx*x(t),
+%dalej K=Kx. K czyli macierz wzmocnień przesuwa bieguny tak, żeby osiągnąć
+%prędkość silnika w(t) taką, aby spełnić cele regulacji
+
+%sprawdzenie warunku sterowalności
+macierz_warunku_sterowalnosci=ctrb(model_wypadkowy)  
+rank(macierz_warunku_sterowalnosci) %musi miec taki rząd (rank) jak nasz model wypadkowy
+model_wypadkowy.c=eye(3);
+%budowa regulatora
+K=place(model_wypadkowy.a, model_wypadkowy.b, [1.9*(-22.88), -7.4*1.9,  -3000])  %regulator, wartości wyznaczone metodą prób i błedów
+model_ze_sprzezeniem=feedback(model_wypadkowy,K)  %sprzężenie zwrotne modelu wypadkowego przez regulator
+%step(model_ze_sprzezeniem(2))
+N=dcgain(model_ze_sprzezeniem(2))
+model_ze_sprzezeniem(2)=model_ze_sprzezeniem(2)*(1/N)
+bieguny_modelu_ze_sprzezeniem=pole(model_ze_sprzezeniem)
+step(model_ze_sprzezeniem(2))
+p=model_ze_sprzezeniem(2);
+
+
